@@ -34,11 +34,8 @@ struct nat_flow_id {
 
 struct nat_flow_id_comparator {
 	bool operator()(const nat_flow_id& lhs, const nat_flow_id& rhs) const {
-		return lhs.src_addr == rhs.src_addr &&
-			lhs.src_port == rhs.src_port &&
-			lhs.dst_addr == rhs.dst_addr &&
-			lhs.dst_port == rhs.dst_port &&
-			lhs.protocol == rhs.protocol;
+		return std::tie(lhs.src_addr, lhs.src_port, lhs.dst_addr, lhs.dst_port, lhs.protocol) <
+			std::tie(rhs.src_addr, rhs.src_port, rhs.dst_addr, rhs.dst_port, rhs.protocol);
 	}
 };
 
