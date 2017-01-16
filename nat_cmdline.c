@@ -38,7 +38,7 @@ nat_cmdline_parse(struct nat_cmdline_args* nat_args, int argc, char** argv)
 
 	struct option long_options[] = {
 		{"eth-dest",	required_argument, NULL, 'm'},
-		{"end-mac",	required_argument, NULL, 'e'},
+		{"eth-own",	required_argument, NULL, 'e'},
 		{"expire",	required_argument, NULL, 't'},
 		{"extip",	required_argument, NULL, 'i'},
 		{"lan-dev",	required_argument, NULL, 'l'},
@@ -57,26 +57,26 @@ nat_cmdline_parse(struct nat_cmdline_args* nat_args, int argc, char** argv)
 		unsigned device;
 		switch (opt) {
 			case 'm':
-				device = nat_cmdline_parse_int(optarg, "dev-mac device", 10, ',');
+				device = nat_cmdline_parse_int(optarg, "eth-dest device", 10, ',');
 				if (device >= nb_devices) {
-					PARSE_ERROR("dev-mac: device %d >= nb_devices (%d)\n", device, nb_devices);
-				}
-
-				optarg += 2;
-				if (cmdline_parse_etheraddr(NULL, optarg, &(nat_args->device_macs[device]), sizeof(int64_t)) < 0) {
-					PARSE_ERROR("Invalid dev-mac address: %s\n", optarg);
-				}
-				break;
-
-			case 'e':
-				device = nat_cmdline_parse_int(optarg, "end-mac device", 10, ',');
-				if (device >= nb_devices) {
-					PARSE_ERROR("end-mac: device %d >= nb_devices (%d)\n", device, nb_devices);
+					PARSE_ERROR("eth-dest: device %d >= nb_devices (%d)\n", device, nb_devices);
 				}
 
 				optarg += 2;
 				if (cmdline_parse_etheraddr(NULL, optarg, &(nat_args->endpoint_macs[device]), sizeof(int64_t)) < 0) {
-					PARSE_ERROR("Invalid end-mac address: %s\n", optarg);
+					PARSE_ERROR("Invalid MAC address: %s\n", optarg);
+				}
+				break;
+
+			case 'e':
+				device = nat_cmdline_parse_int(optarg, "eth-own device", 10, ',');
+				if (device >= nb_devices) {
+					PARSE_ERROR("eth-own: device %d >= nb_devices (%d)\n", device, nb_devices);
+				}
+
+				optarg += 2;
+				if (cmdline_parse_etheraddr(NULL, optarg, &(nat_args->device_macs[device]), sizeof(int64_t)) < 0) {
+					PARSE_ERROR("Invalid MAC address: %s\n", optarg);
 				}
 				break;
 
@@ -149,8 +149,8 @@ nat_cmdline_print_usage(void)
 {
 	printf("Usage:\n"
 		"[DPDK EAL options] --\n"
-		"\t--eth-dest <device>,<mac>: MAC address for a device.\n"
-		"\t--end-mac <device>,<mac>: MAC address of the endpoint linked to a device.\n"
+		"\t--eth-own <device>,<mac>: MAC address for a device.\n"
+		"\t--eth-dest <device>,<mac>: MAC address of the endpoint linked to a device.\n"
 		"\t--expire <time>: flow expiration time.\n"
 		"\t--extip <ip>: external IP address.\n"
 		"\t--lan-dev <device>: set device to be the main LAN device (for non-NAT).\n"

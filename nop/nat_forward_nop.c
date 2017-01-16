@@ -10,7 +10,7 @@
 
 #include "../nat_cmdline.h"
 #include "../nat_forward.h"
-
+#include "../nat_util.h"
 
 void
 nat_core_init(struct nat_cmdline_args* nat_args, unsigned core_id)
@@ -35,6 +35,13 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 		dst_device = nat_args->lan_main_device;
 	} else {
 		dst_device = nat_args->wan_device;
+	}
+
+	// L2 forwarding
+	for (uint16_t buf = 0; buf < bufs_len; buf++) {
+		struct ether_hdr* ether_header = nat_get_mbuf_ether_header(bufs[buf]);
+		ether_header->s_addr = nat_args->device_macs[dst_device];
+		ether_header->d_addr = nat_args->endpoint_macs[dst_device];
 	}
 
 	uint16_t sent_count = rte_eth_tx_burst(dst_device, 0, bufs, bufs_len);

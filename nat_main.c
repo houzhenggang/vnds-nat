@@ -45,6 +45,38 @@ static struct nat_cmdline_args nat_args;
 
 // --- Initialization ---
 
+static void
+nat_print_config(void)
+{
+	printf("--- NAT Config ---");
+
+	printf("Batch size: %u\n", BATCH_SIZE);
+	// TODO prefetch size
+
+	printf("Devices mask: 0x" PRIx32 "\n", nat_args->devices_mask);
+	printf("Main LAN device: " PRIu8 "\n", nat_args->lan_main_device);
+	printf("WAN device: " PRIu8 "\n", nat_args->wan_device);
+
+	char* ext_ip_str = nat_ipv4_to_str(nat_args->external_addr);
+	printf("External IP: %s\n", ext_ip_str);
+	free(ext_ip_str);
+
+	uint8_t nb_devices = rte_eth_dev_count();
+	for (uint8_t dev = 0; dev < nb_devices; dev++) {
+		char* dev_mac_str = nat_mac_to_str(nat_args->device_macs[dev]);
+		char* end_mac_str = nat_mac_to_str(nat_args->endpoint_macs[dev]);
+
+		printf("Device " PRIu8 " own-mac: %s, end-mac: %s", dev, dev_mac_str, end_mac_str);
+
+		free(dev_mac_str);
+		free(end_mac_str);
+	}
+
+	printf("Starting port: " PRIu16 "\n", nat_args->start_port);
+	printf("Expiration time: " PRIu32 "\n", nat_args->expiration_time);
+	printf("Max flows: " PRIu16 "\n", nat_args->max_flows);
+}
+
 static int
 nat_init_device(uint8_t device, struct rte_mempool *mbuf_pool)
 {
@@ -68,7 +100,6 @@ nat_init_device(uint8_t device, struct rte_mempool *mbuf_pool)
 	device_conf.rx_adv_conf.rss_conf.rss_key = NULL;
 	device_conf.rx_adv_conf.rss_conf.rss_hf = ETH_RSS_IP;
 
-
 	retval = rte_eth_dev_configure(
 		device, // The device
 		1, // # of RX queues
@@ -76,7 +107,7 @@ nat_init_device(uint8_t device, struct rte_mempool *mbuf_pool)
 		&device_conf // device config
 	);
 	if (retval != 0) {
-		rte_exit(EXIT_FAILURE, "Cannot configure device %d, err=%d", device, retval);
+		rte_exit(EXIT_FAILURE, "Cannot configure device " PRIu8 ", err=%d", device, retval);
 	}
 
 	// Allocate and set up 1 RX queue per device
@@ -89,7 +120,7 @@ nat_init_device(uint8_t device, struct rte_mempool *mbuf_pool)
 		mbuf_pool // memory pool
 	);
 	if (retval < 0) {
-		rte_exit(EXIT_FAILURE, "Cannot allocate RX queue for device %d, err=%d", device, retval);
+		rte_exit(EXIT_FAILURE, "Cannot allocate RX queue for device " PRIu8 ", err=%d", device, retval);
 	}
 
 	// Allocate and set up 1 TX queue per device
@@ -101,13 +132,13 @@ nat_init_device(uint8_t device, struct rte_mempool *mbuf_pool)
 		NULL // config (NULL = default)
 	);
 	if (retval < 0) {
-		rte_exit(EXIT_FAILURE, "Cannot allocate TX queue for device %d, err=%d", device, retval);
+		rte_exit(EXIT_FAILURE, "Cannot allocate TX queue for device " PRIu8 " err=%d", device, retval);
 	}
 
 	// Start the device
 	retval = rte_eth_dev_start(device);
 	if (retval < 0) {
-		rte_exit(EXIT_FAILURE, "Cannot start device on device %d, err=%d", device, retval);
+		rte_exit(EXIT_FAILURE, "Cannot start device on device " PRIu8 ", err=%d", device, retval);
 	}
 
 	// Enable RX in promiscuous mode for the Ethernet device
@@ -127,7 +158,7 @@ lcore_main(void)
 
 	for (uint8_t device = 0; device < nb_devices; device++) {
 		if (rte_eth_dev_socket_id(device) > 0 && rte_eth_dev_socket_id(device) != (int) rte_socket_id()) {
-			RTE_LOG(WARNING, NAT, "Device %u is on remote NUMA node to polling thread.\n", device);
+			RTE_LOG(WARNING, NAT, "Device " PRIu8 " is on remote NUMA node to polling thread.\n", device);
 		}
 	}
 
@@ -138,14 +169,16 @@ lcore_main(void)
 	// Run until the application is killed
 	while(1) {
 		for (uint8_t device = 0; device < nb_devices; device++) {
-			struct rte_mbuf* bufs[BATCH_SIZE];
-			uint16_t bufs_len = rte_eth_rx_burst(device, 0, bufs, BATCH_SIZE);
-
-			if (unlikely(bufs_len == 0)) {
+			if ((nat_args.devices_mask & (1 << device)) == 0) {
 				continue;
 			}
 
-			nat_core_process(&nat_args, core_id, device, bufs, bufs_len);
+			struct rte_mbuf* bufs[BATCH_SIZE];
+			uint16_t bufs_len = rte_eth_rx_burst(device, 0, bufs, BATCH_SIZE);
+
+			if (likely(bufs_len != 0)) {
+				nat_core_process(&nat_args, core_id, device, bufs, bufs_len);
+			}
 		}
 	}
 }
@@ -182,12 +215,16 @@ main(int argc, char *argv[])
 
 	// Initialize all devices
 	for (uint8_t device = 0; device < nb_devices; device++) {
-		if ((nat_args.devices_mask & (1 << device)) == 1) {
-			if (nat_init_device(device, mbuf_pool) != 0) {
-				rte_exit(EXIT_FAILURE, "Cannot init device %" PRIu8 "\n", device);
-			}
+		if ((nat_args.devices_mask & (1 << device)) == 0) {
+			RTE_LOG(INFO, NAT, "Skipping disabled device " PRIu8 "\n", device);
+		} else if (nat_init_device(device, mbuf_pool) == 0) {
+			RTE_LOG(INFO, NAT, "Initialized device " PRIu8 "\n", device);
+		} else {
+			rte_exit(EXIT_FAILURE, "Cannot init device " PRIu8 "\n", device);
 		}
 	}
+
+	RTE_LOG(INFO, NAT, "Starting! Batch size is " PRIu16 "\n", BATCH_SIZE);
 
 	// Run!
 	// ...in single-threaded mode, that is.

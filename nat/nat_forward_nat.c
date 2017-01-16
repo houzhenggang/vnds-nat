@@ -13,7 +13,6 @@
 #include <rte_ip.h>
 #include <rte_mbuf.h>
 
-// For some reason, including those without the .. doesn't work
 #include "../nat_cmdline.h"
 #include "../nat_forward.h"
 #include "../nat_util.h"
