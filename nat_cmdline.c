@@ -37,15 +37,15 @@ nat_cmdline_parse(struct nat_cmdline_args* nat_args, int argc, char** argv)
 	unsigned nb_devices = rte_eth_dev_count();
 
 	struct option long_options[] = {
-		{"dev-mac",	required_argument, NULL, 'm'},
+		{"eth-dest",	required_argument, NULL, 'm'},
 		{"end-mac",	required_argument, NULL, 'e'},
-		{"exp-time",	required_argument, NULL, 't'},
-		{"ext-ip",	required_argument, NULL, 'i'},
+		{"expire",	required_argument, NULL, 't'},
+		{"extip",	required_argument, NULL, 'i'},
 		{"lan-dev",	required_argument, NULL, 'l'},
 		{"max-flows",	required_argument, NULL, 'f'},
 		{"devs-mask",	required_argument, NULL, 'p'},
-		{"start-port",	required_argument, NULL, 's'},
-		{"wan-dev",	required_argument, NULL, 'w'},
+		{"starting-port",	required_argument, NULL, 's'},
+		{"wan",		required_argument, NULL, 'w'},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -149,14 +149,14 @@ nat_cmdline_print_usage(void)
 {
 	printf("Usage:\n"
 		"[DPDK EAL options] --\n"
-		"\t--dev-mac <device>,<mac>: MAC address for a device.\n"
+		"\t--eth-dest <device>,<mac>: MAC address for a device.\n"
 		"\t--end-mac <device>,<mac>: MAC address of the endpoint linked to a device.\n"
-		"\t--exp-time <time>: flow expiration time.\n"
-		"\t--ext-ip <ip>: external IP address.\n"
+		"\t--expire <time>: flow expiration time.\n"
+		"\t--extip <ip>: external IP address.\n"
 		"\t--lan-dev <device>: set device to be the main LAN device (for non-NAT).\n"
 		"\t--max-flows <n>: flow table capacity.\n"
-		"\t--devs-mask <n>: devices mask to enable/disable devices\n"
-		"\t--start-port <n>: start of the port range for external ports.\n"
-		"\t--wan-dev <device>: set device to be the external one.\n"
+		"\t--devs-mask / -p <n>: devices mask to enable/disable devices\n"
+		"\t--starting-port <n>: start of the port range for external ports.\n"
+		"\t--wan <device>: set device to be the external one.\n"
 	);
 }
