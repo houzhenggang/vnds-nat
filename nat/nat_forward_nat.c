@@ -68,7 +68,7 @@ struct nat_flow {
 #define NAT_MAP_KEY_T nat_flow_id
 #define NAT_MAP_VALUE_T nat_flow
 #include "../nat_map.h"
-#include "../nat_map_cppstl.c"
+#include "../nat_map_dpdk.c"
 
 static std::vector<uint16_t> available_ports;
 

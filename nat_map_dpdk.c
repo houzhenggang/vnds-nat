@@ -1,7 +1,9 @@
+#include <rte_mbuf.h>
 #include <rte_table.h>
 #include <rte_table_hash.h>
 
 #include "nat_map.h"
+
 
 // Map using DPDK table.
 // Keys must be structs whose size is a power of 2.
@@ -21,7 +23,7 @@ static nat_map_hash_fn map_hash_fn;
 static uint64_t
 nat_map_hash_fn_dpdk(void* key, uint32_t key_size, uint64_t seed)
 {
-	return (*map_hash_fn)((NAT_MAP_KEY_T) key);
+	return (*map_hash_fn)(*((NAT_MAP_KEY_T*) key));
 }
 
 
@@ -34,7 +36,7 @@ nat_map_set_fns(nat_map_hash_fn hash_fn, nat_map_eq_fn eq_fn)
 }
 
 struct nat_map*
-nat_map_create(uint32_t capacity, nat_map_hash_fn hash_fn)
+nat_map_create(uint32_t capacity)
 {
 	rte_table_hash_ext_params* table_params = (rte_table_hash_ext_params*) malloc(sizeof(rte_table_hash_ext_params));
 	table_params->key_size = sizeof(NAT_MAP_KEY_T);
@@ -61,7 +63,7 @@ nat_map_insert(struct nat_map* map, NAT_MAP_KEY_T key, NAT_MAP_VALUE_T* value)
 	// We care about neither.
 	int unused_key_found;
 	void* unused_entry_ptr;
-	rte_table_hash_ext_dosig_ops.f_add(map->value, key, value, &unused_key_found, &unused_entry_ptr);
+	rte_table_hash_ext_dosig_ops.f_add(map->value, &key, value, &unused_key_found, &unused_entry_ptr);
 }
 
 void
@@ -70,20 +72,21 @@ nat_map_remove(struct nat_map* map, NAT_MAP_KEY_T key)
 	// Same remark as insert
 	int unused_key_found;
 	void* unused_entry_ptr;
-	rte_table_hash_ext_dosig_ops.f_delete(map->value, key, &unused_key_found, &unused_entry_ptr);
+	rte_table_hash_ext_dosig_ops.f_delete(map->value, &key, &unused_key_found, &unused_entry_ptr);
 }
 
 bool
 nat_map_get(struct nat_map* map, NAT_MAP_KEY_T key, NAT_MAP_VALUE_T** value)
 {
 	uint64_t lookup_hit_mask;
+	void* keys = &key;
 
 	rte_table_hash_ext_dosig_ops.f_lookup(
 		map->value,
-		&((struct rte_mbufs*) key), // keys: pseudo-array of pseudo-mbufs
+		(struct rte_mbuf**) &keys, // keys: pseudo-array of pseudo-mbufs
 		1, // number of keys
 		&lookup_hit_mask,
-		value
+		(void**) value
 	);
 
 	return (lookup_hit_mask & 1) == 1;
