@@ -34,12 +34,17 @@ struct nat_flow_id {
 	uint8_t protocol;
 };
 
-struct nat_flow_id_comparator {
-	bool operator()(const nat_flow_id& lhs, const nat_flow_id& rhs) const {
-		return std::tie(lhs.src_addr, lhs.src_port, lhs.dst_addr, lhs.dst_port, lhs.protocol) <
-			std::tie(rhs.src_addr, rhs.src_port, rhs.dst_addr, rhs.dst_port, rhs.protocol);
-	}
-};
+static int64_t
+nat_flow_id_hash(struct nat_flow_id id)
+{
+	uint64_t hash = 17;
+	hash = hash * 31 + id.src_addr;
+	hash = hash * 31 + id.src_port;
+	hash = hash * 31 + id.dst_addr;
+	hash = hash * 31 + id.dst_port;
+	hash = hash * 31 + id.protocol;
+	return hash;
+}
 
 struct nat_flow {
 	struct nat_flow_id id;
@@ -49,10 +54,15 @@ struct nat_flow {
 };
 
 
+#define MAP_KEY_T nat_flow_id
+#define MAP_VALUE_T nat_flow*
+#include "../nat_map.h"
+
+
 static std::vector<uint16_t> available_ports;
 
-static std::map<struct nat_flow_id, struct nat_flow*, nat_flow_id_comparator> flows_from_inside;
-static std::map<struct nat_flow_id, struct nat_flow*, nat_flow_id_comparator> flows_from_outside;
+static struct nat_map* flows_from_inside;
+static struct nat_map* flows_from_outside;
 static std::multimap<time_t, struct nat_flow*> flows_by_time;
 
 static time_t current_timestamp;
@@ -88,6 +98,9 @@ nat_flow_refresh(struct nat_flow* flow)
 void
 nat_core_init(struct nat_cmdline_args* nat_args, unsigned core_id)
 {
+	flows_from_inside = nat_map_create(nat_args->max_flows, nat_flow_id_hash);
+	flows_from_outside = nat_map_create(nat_args->max_flows, nat_flow_id_hash);
+
 	for (uint16_t port = 0; port < nat_args->max_flows; port++) {
 		available_ports.push_back(port + nat_args->start_port);
 	}
@@ -131,8 +144,8 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 			expired_from_outside.dst_port = expired->external_port;
 			expired_from_outside.protocol = expired->id.protocol;
 
-			flows_from_inside.erase(expired->id);
-			flows_from_outside.erase(expired_from_outside);
+			nat_map_remove(flows_from_inside, expired->id);
+			nat_map_remove(flows_from_outside, expired_from_outside);
 			available_ports.push_back(expired->external_port);
 
 			free(expired);
@@ -152,13 +165,11 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 
 			struct nat_flow_id flow_id = nat_flow_id_from_ipv4(ipv4_header);
 
-			auto flow_iter = flows_from_outside.find(flow_id);
-			if (flow_iter == flows_from_outside.end()) {
+			struct nat_flow* flow;
+			if (!nat_map_get(flows_from_outside, flow_id, &flow)) {
 				rte_pktmbuf_free(bufs[buf]);
 				continue;
 			}
-
-			struct nat_flow* flow = flow_iter->second;
 
 			nat_flow_refresh(flow);
 
@@ -196,8 +207,7 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 			struct tcpudp_hdr* tcpudp_header = nat_get_ipv4_tcpudp_header(ipv4_header);
 
 			struct nat_flow* flow;
-			auto flow_iter = flows_from_inside.find(flow_id);
-			if (flow_iter == flows_from_inside.end()) {
+			if (!nat_map_get(flows_from_inside, flow_id, &flow)) {
 				if (available_ports.empty()) {
 					rte_pktmbuf_free(bufs[buf]);
 
@@ -225,10 +235,8 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 				flow_from_outside.protocol = ipv4_header->next_proto_id;
 
 
-				flows_from_inside.insert(std::make_pair(flow_id, flow));
-				flows_from_outside.insert(std::make_pair(flow_from_outside, flow));
-			} else {
-				flow = flow_iter->second;
+				nat_map_insert(flows_from_inside, flow_id, flow);
+				nat_map_insert(flows_from_outside, flow_from_outside, flow);
 			}
 
 			nat_flow_refresh(flow);

@@ -7,7 +7,7 @@ APP = nat
 CC = g++
 
 # sources
-SRCS-y := ../nat_main.c ../nat_cmdline.c nat_forward_nat.c
+SRCS-y := ../nat_main.c ../nat_cmdline.c ../nat_map_cppstl.c nat_forward_nat.c
 
 #CFLAGS += -O3
 CFLAGS += -g
