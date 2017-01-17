@@ -15,6 +15,8 @@
 #include <rte_ip.h>
 #include <rte_mbuf.h>
 
+#include <rte_log.h> // TODO remove
+
 #include "../nat_cmdline.h"
 #include "../nat_forward.h"
 #include "../nat_util.h"
@@ -41,10 +43,11 @@ struct nat_flow_id_comparator {
 };
 
 struct nat_flow {
+	int MAGIC;
 	struct nat_flow_id id;
 	uint8_t internal_device;
 	uint16_t external_port;
-	unsigned last_packet_timestamp;
+	time_t last_packet_timestamp;
 };
 
 
@@ -52,9 +55,9 @@ static std::vector<uint16_t> available_ports;
 
 static std::map<nat_flow_id, nat_flow*, nat_flow_id_comparator> flows_from_inside;
 static std::map<nat_flow_id, nat_flow*, nat_flow_id_comparator> flows_from_outside;
-static std::multimap<unsigned, nat_flow*> flows_by_time;
+static std::multimap<time_t, nat_flow*> flows_by_time;
 
-static unsigned current_timestamp;
+static time_t current_timestamp;
 
 
 static struct nat_flow_id
@@ -75,8 +78,23 @@ nat_flow_id_from_ipv4(struct ipv4_hdr* header)
 static void
 nat_flow_refresh(struct nat_flow* flow)
 {
-	// Don't erase it from flows_by_time, not needed
+	if (flow->last_packet_timestamp == current_timestamp) {
+		RTE_LOG(INFO, USER1, "not refreshing\n");
+		return;
+	}
+
+	auto range = flows_by_time.equal_range(flow->last_packet_timestamp);
+	for (auto pair = range.first; pair != range.second; pair++) {
+		if (pair->second == flow) {
+			RTE_LOG(INFO, USER1, "refreshing flow, magic=%d, ext=%" PRIu16 "\n", flow->MAGIC, flow->external_port);
+			flows_by_time.erase(pair);
+			break;
+		}
+	}
+
+	RTE_LOG(INFO, USER1, "current %ld, flow last %ld\n", current_timestamp, flow->last_packet_timestamp);
 	flow->last_packet_timestamp = current_timestamp;
+	RTE_LOG(INFO, USER1, "inserting refresh flow magic=%d, ext=%" PRIu16 "\n", flow->MAGIC, flow->external_port);
 	flows_by_time.insert(std::make_pair(current_timestamp, flow));
 }
 
@@ -95,20 +113,20 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 	// Set this iteration's time
 	current_timestamp = time(NULL);
 
+	time_t xxx = 0;
 	// Expire flows if needed
-	for (auto group = flows_by_time.begin(); group != flows_by_time.end(); group++) {
-		if ((current_timestamp - group->first) < nat_args->expiration_time) {
-			break;
-		}
+	for (auto group = flows_by_time.begin();
+		group != flows_by_time.end() && (current_timestamp - group->first) > nat_args->expiration_time;
+		group = flows_by_time.upper_bound(xxx)) {
+//		group = flows_by_time.erase(group)) {
+		RTE_LOG(INFO, USER1, "Expiring at ts %ld, current is %ld\n", group->first, current_timestamp);
 
 		auto range = flows_by_time.equal_range(group->first);
 		for (auto pair = range.first; pair != range.second; pair++) {
 			struct nat_flow* expired = pair->second;
 
-			if (expired->last_packet_timestamp != group->first) {
-				// Not expired; also present later in the map
-				continue;
-			}
+			RTE_LOG(INFO, USER1, "Candidate: key=%ld magic=%d, %" PRIu16 " -> %" PRIu16 " -> %" PRIu16 "\n",
+				pair->first, expired->MAGIC, expired->id.src_port, expired->external_port, expired->id.dst_port);
 
 			struct nat_flow_id expired_from_outside;
 			expired_from_outside.src_addr = expired->id.dst_addr;
@@ -121,10 +139,16 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 			flows_from_outside.erase(expired_from_outside);
 			available_ports.push_back(expired->external_port);
 
+			RTE_LOG(INFO, USER1, "freeing\n");
 			free(expired);
 		}
 
-		flows_by_time.erase(group->first);
+		xxx = group->first;
+		flows_by_time.erase(group);
+	}
+	RTE_LOG(INFO, USER1, "end of expire\n");
+	if (!flows_by_time.empty()) {
+		RTE_LOG(INFO, USER1, "current beginning is %ld\n", flows_by_time.begin()->first);
 	}
 
 	if (device == nat_args->wan_device) {
@@ -185,6 +209,8 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 			if (flow_iter == flows_from_inside.end()) {
 				if (available_ports.empty()) {
 					rte_pktmbuf_free(bufs[buf]);
+
+	RTE_LOG(INFO, USER1, "DAMN no more available ports\n");
 					continue;
 				}
 
@@ -196,9 +222,11 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 					rte_exit(EXIT_FAILURE, "Out of memory!");
 				}
 
+				flow->MAGIC = 424242;
 				flow->id = flow_id;
 				flow->external_port = flow_port;
 				flow->internal_device = device;
+				flow->last_packet_timestamp = 0;
 
 				struct nat_flow_id flow_from_outside;
 				flow_from_outside.src_addr = ipv4_header->dst_addr;
@@ -206,6 +234,11 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 				flow_from_outside.dst_addr = nat_args->external_addr;
 				flow_from_outside.dst_port = flow_port;
 				flow_from_outside.protocol = ipv4_header->next_proto_id;
+
+
+	RTE_LOG(INFO, USER1, "NEW magic=%d %" PRIu16 " -> %" PRIu16 " -> %" PRIu16 " at %ld\n", flow->MAGIC,
+flow->id.src_port, flow->external_port, flow->id.dst_port, current_timestamp);
+
 
 				flows_from_inside.insert(std::make_pair(flow_id, flow));
 				flows_from_outside.insert(std::make_pair(flow_from_outside, flow));
