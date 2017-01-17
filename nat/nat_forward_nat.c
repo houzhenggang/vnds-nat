@@ -9,6 +9,7 @@
 #include <netinet/in.h>
 
 #include <map>
+#include <unordered_set>
 #include <vector>
 
 #include <rte_ethdev.h>
@@ -50,9 +51,9 @@ struct nat_flow {
 
 static std::vector<uint16_t> available_ports;
 
-static std::map<nat_flow_id, nat_flow*, nat_flow_id_comparator> flows_from_inside;
-static std::map<nat_flow_id, nat_flow*, nat_flow_id_comparator> flows_from_outside;
-static std::multimap<time_t, nat_flow*> flows_by_time;
+static std::map<struct nat_flow_id, struct nat_flow*, nat_flow_id_comparator> flows_from_inside;
+static std::map<struct nat_flow_id, struct nat_flow*, nat_flow_id_comparator> flows_from_outside;
+static std::multimap<time_t, struct nat_flow*> flows_by_time;
 
 static time_t current_timestamp;
 
@@ -79,14 +80,6 @@ nat_flow_refresh(struct nat_flow* flow)
 		return;
 	}
 
-	auto range = flows_by_time.equal_range(flow->last_packet_timestamp);
-	for (auto pair = range.first; pair != range.second; pair++) {
-		if (pair->second == flow) {
-			flows_by_time.erase(pair);
-			break;
-		}
-	}
-
 	flow->last_packet_timestamp = current_timestamp;
 	flows_by_time.insert(std::make_pair(current_timestamp, flow));
 }
@@ -106,14 +99,30 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 	// Set this iteration's time
 	current_timestamp = time(NULL);
 
-	time_t erased_timestamp = 0;
 	// Expire flows if needed
-	for (auto group = flows_by_time.begin();
-		group != flows_by_time.end() && (current_timestamp - group->first) > nat_args->expiration_time;
-		group = flows_by_time.upper_bound(erased_timestamp)) {
-		auto range = flows_by_time.equal_range(group->first);
+	time_t expired_timestamp = 0;
+	for (auto group = flows_by_time.begin(); group != flows_by_time.end(); group = flows_by_time.upper_bound(expired_timestamp)) {
+		expired_timestamp = group->first;
+
+		if ((current_timestamp - expired_timestamp) <= nat_args->expiration_time) {
+			break;
+		}
+
+		std::unordered_set<struct nat_flow*> freed;
+
+		auto range = flows_by_time.equal_range(expired_timestamp);
 		for (auto pair = range.first; pair != range.second; pair++) {
 			struct nat_flow* expired = pair->second;
+
+			if (expired->last_packet_timestamp != expired_timestamp) {
+				// Still alive
+				continue;
+			}
+
+			if (freed.find(expired) != freed.end()) {
+				// Already freed
+				continue;
+			}
 
 			struct nat_flow_id expired_from_outside;
 			expired_from_outside.src_addr = expired->id.dst_addr;
@@ -127,10 +136,10 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 			available_ports.push_back(expired->external_port);
 
 			free(expired);
+			freed.insert(expired);
 		}
 
-		erased_timestamp = group->first;
-		flows_by_time.erase(erased_timestamp);
+		flows_by_time.erase(expired_timestamp);
 	}
 
 	if (device == nat_args->wan_device) {
