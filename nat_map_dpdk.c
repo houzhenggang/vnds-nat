@@ -3,6 +3,8 @@
 
 #include "nat_map.h"
 
+// Map using DPDK table.
+// Keys must be structs whose size is a power of 2.
 
 // DPDK's "table" structure is meant to use packets, i.e. rte_mbufs, as keys.
 // However, it never actually accesses the packet-specific things,
@@ -24,8 +26,10 @@ nat_map_hash_fn_dpdk(void* key, uint32_t key_size, uint64_t seed)
 
 
 void
-nat_map_initialize(nat_map_hash_fn hash_fn)
+nat_map_set_fns(nat_map_hash_fn hash_fn, nat_map_eq_fn eq_fn)
 {
+	(void) eq_fn; // Unused
+
 	map_hash_fn = hash_fn;
 }
 
@@ -33,7 +37,7 @@ struct nat_map*
 nat_map_create(uint32_t capacity, nat_map_hash_fn hash_fn)
 {
 	rte_table_hash_ext_params* table_params = (rte_table_hash_ext_params*) malloc(sizeof(rte_table_hash_ext_params));
-	table_params->key_size = NAT_MAP_KEY_SIZE;
+	table_params->key_size = sizeof(NAT_MAP_KEY_T);
 	table_params->n_keys = capacity;
 	table_params->n_buckets = capacity;
 	table_params->n_buckets_ext = capacity;
@@ -43,7 +47,7 @@ nat_map_create(uint32_t capacity, nat_map_hash_fn hash_fn)
 	table_params->key_offset; // MUST be 0, see remark at top of file
 
 	// 2nd param is socket ID, we don't really need it
-	void* dpdk_table = rte_table_hash_ext_dosig_ops.f_create(table_params, 0, NAT_MAP_VALUE_SIZE);
+	void* dpdk_table = rte_table_hash_ext_dosig_ops.f_create(table_params, 0, sizeof(NAT_MAP_VALUE_T*));
 
 	nat_map* map = (nat_map*) malloc(sizeof(nat_map));
 	map->value = dpdk_table;
@@ -51,7 +55,7 @@ nat_map_create(uint32_t capacity, nat_map_hash_fn hash_fn)
 }
 
 void
-nat_map_insert(struct nat_map* map, NAT_MAP_KEY_T key, NAT_MAP_VALUE_T value)
+nat_map_insert(struct nat_map* map, NAT_MAP_KEY_T key, NAT_MAP_VALUE_T* value)
 {
 	// The add function allows to both check if the value was already there, and get a handle to the entry.
 	// We care about neither.
@@ -70,7 +74,7 @@ nat_map_remove(struct nat_map* map, NAT_MAP_KEY_T key)
 }
 
 bool
-nat_map_get(struct nat_map* map, NAT_MAP_KEY_T key, NAT_MAP_VALUE_T* value)
+nat_map_get(struct nat_map* map, NAT_MAP_KEY_T key, NAT_MAP_VALUE_T** value)
 {
 	uint64_t lookup_hit_mask;
 

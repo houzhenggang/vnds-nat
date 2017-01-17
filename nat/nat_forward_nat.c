@@ -32,9 +32,13 @@ struct nat_flow_id {
 	uint32_t dst_addr;
 	uint16_t dst_port;
 	uint8_t protocol;
+
+	// To use DPDK maps, this type must have a power of 2 size.
+	uint16_t filler1;
+	uint8_t filler2;
 };
 
-static int64_t
+static uint64_t
 nat_flow_id_hash(struct nat_flow_id id)
 {
 	uint64_t hash = 17;
@@ -46,6 +50,13 @@ nat_flow_id_hash(struct nat_flow_id id)
 	return hash;
 }
 
+static bool
+nat_flow_id_eq(struct nat_flow_id left, struct nat_flow_id right)
+{
+	return memcmp(&left, &right, sizeof(struct nat_flow_id));
+}
+
+
 struct nat_flow {
 	struct nat_flow_id id;
 	uint8_t internal_device;
@@ -55,11 +66,9 @@ struct nat_flow {
 
 
 #define NAT_MAP_KEY_T nat_flow_id
-#define NAT_MAP_KEY_SIZE 16
-#define NAT_MAP_VALUE_T nat_flow*
-#define NAT_MAP_VALUE_SIZE sizeof(NAT_MAP_VALUE_T)
+#define NAT_MAP_VALUE_T nat_flow
 #include "../nat_map.h"
-
+#include "../nat_map_cppstl.c"
 
 static std::vector<uint16_t> available_ports;
 
@@ -100,8 +109,9 @@ nat_flow_refresh(struct nat_flow* flow)
 void
 nat_core_init(struct nat_cmdline_args* nat_args, unsigned core_id)
 {
-	flows_from_inside = nat_map_create(nat_args->max_flows, nat_flow_id_hash);
-	flows_from_outside = nat_map_create(nat_args->max_flows, nat_flow_id_hash);
+	nat_map_set_fns(&nat_flow_id_hash, &nat_flow_id_eq);
+	flows_from_inside = nat_map_create(nat_args->max_flows);
+	flows_from_outside = nat_map_create(nat_args->max_flows);
 
 	for (uint16_t port = 0; port < nat_args->max_flows; port++) {
 		available_ports.push_back(port + nat_args->start_port);
