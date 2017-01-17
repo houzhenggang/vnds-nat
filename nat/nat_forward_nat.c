@@ -106,12 +106,11 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 	// Set this iteration's time
 	current_timestamp = time(NULL);
 
-	time_t xxx = 0;
+	time_t erased_timestamp = 0;
 	// Expire flows if needed
 	for (auto group = flows_by_time.begin();
 		group != flows_by_time.end() && (current_timestamp - group->first) > nat_args->expiration_time;
-		group = flows_by_time.upper_bound(xxx)) {
-//		group = flows_by_time.erase(group)) {
+		group = flows_by_time.upper_bound(erased_timestamp)) {
 		auto range = flows_by_time.equal_range(group->first);
 		for (auto pair = range.first; pair != range.second; pair++) {
 			struct nat_flow* expired = pair->second;
@@ -130,8 +129,8 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 			free(expired);
 		}
 
-		xxx = group->first;
-		flows_by_time.erase(group->first);
+		erased_timestamp = group->first;
+		flows_by_time.erase(erased_timestamp);
 	}
 
 	if (device == nat_args->wan_device) {
