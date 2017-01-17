@@ -16,6 +16,8 @@
 #include <rte_ip.h>
 #include <rte_mbuf.h>
 
+#include <rte_log.h> // TODO remove
+
 #include "../nat_cmdline.h"
 #include "../nat_forward.h"
 #include "../nat_util.h"
@@ -47,13 +49,15 @@ nat_flow_id_hash(struct nat_flow_id id)
 	hash = hash * 31 + id.dst_addr;
 	hash = hash * 31 + id.dst_port;
 	hash = hash * 31 + id.protocol;
+	printf("HASH %" PRIu64 "\n", hash);
 	return hash;
 }
 
 static bool
 nat_flow_id_eq(struct nat_flow_id left, struct nat_flow_id right)
 {
-	return memcmp(&left, &right, sizeof(struct nat_flow_id));
+	printf("CMP %d\n", memcmp(&left, &right, sizeof(struct nat_flow_id)));
+	return 1 - memcmp(&left, &right, sizeof(struct nat_flow_id));
 }
 
 
@@ -68,7 +72,7 @@ struct nat_flow {
 #define NAT_MAP_KEY_T nat_flow_id
 #define NAT_MAP_VALUE_T nat_flow
 #include "../nat_map.h"
-#include "../nat_map_dpdk.c"
+#include "../nat_map_cppstl.c"
 
 static std::vector<uint16_t> available_ports;
 
@@ -124,6 +128,7 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 	// Set this iteration's time
 	current_timestamp = time(NULL);
 
+	RTE_LOG(INFO, USER1, "expiring\n");
 	// Expire flows if needed
 	time_t expired_timestamp = 0;
 	for (auto group = flows_by_time.begin(); group != flows_by_time.end(); group = flows_by_time.upper_bound(expired_timestamp)) {
@@ -168,9 +173,11 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 	}
 
 	if (device == nat_args->wan_device) {
+		RTE_LOG(INFO, USER1, "wan\n");
 		for (uint16_t buf = 0; buf < bufs_len; buf++) {
 			struct ipv4_hdr* ipv4_header = nat_get_mbuf_ipv4_header(bufs[buf]);
 			if(ipv4_header->next_proto_id != IPPROTO_TCP && ipv4_header->next_proto_id != IPPROTO_UDP) {
+				RTE_LOG(INFO, USER1, "not tcpudp");
 				rte_pktmbuf_free(bufs[buf]);
 				continue;
 			}
@@ -179,6 +186,7 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 
 			struct nat_flow* flow;
 			if (!nat_map_get(flows_from_outside, flow_id, &flow)) {
+				RTE_LOG(INFO, USER1, "no flow\n");
 				rte_pktmbuf_free(bufs[buf]);
 				continue;
 			}
@@ -198,12 +206,15 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 			// Checksum
 			nat_set_ipv4_checksum(ipv4_header);
 
+			RTE_LOG(INFO, USER1, "sending\n");
 			uint16_t actual_sent_len = rte_eth_tx_burst(flow->internal_device, 0, bufs + buf, 1);
 			if (unlikely(actual_sent_len == 0)) {
+				RTE_LOG(INFO, USER1, "not sent\n");
 				rte_pktmbuf_free(bufs[buf]);
 			}
 		}
 	} else {
+		RTE_LOG(INFO, USER1, "internal\n");
 		// Batch the packets, as they'll all be sent via the WAN device.
 		struct rte_mbuf* bufs_to_send[bufs_len];
 		uint16_t bufs_to_send_len = 0;
@@ -211,6 +222,7 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 		for (uint16_t buf = 0; buf < bufs_len; buf++) {
 			struct ipv4_hdr* ipv4_header = nat_get_mbuf_ipv4_header(bufs[buf]);
 			if(ipv4_header->next_proto_id != IPPROTO_TCP && ipv4_header->next_proto_id != IPPROTO_UDP) {
+				RTE_LOG(INFO, USER1, "not tcpudp\n");
 				rte_pktmbuf_free(bufs[buf]);
 				continue;
 			}
@@ -220,7 +232,9 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 
 			struct nat_flow* flow;
 			if (!nat_map_get(flows_from_inside, flow_id, &flow)) {
+				RTE_LOG(INFO, USER1, "new flow\n");
 				if (available_ports.empty()) {
+					RTE_LOG(INFO, USER1, "no available ports\n");
 					rte_pktmbuf_free(bufs[buf]);
 
 					continue;
@@ -246,7 +260,7 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 				flow_from_outside.dst_port = flow_port;
 				flow_from_outside.protocol = ipv4_header->next_proto_id;
 
-
+				RTE_LOG(INFO, USER1, "allocating flow\n");
 				nat_map_insert(flows_from_inside, flow_id, flow);
 				nat_map_insert(flows_from_outside, flow_from_outside, flow);
 			}
@@ -265,14 +279,17 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 			// Checksum
 			nat_set_ipv4_checksum(ipv4_header);
 
+			RTE_LOG(INFO, USER1, "buffering\n");
 			bufs_to_send[bufs_to_send_len] = bufs[buf];
 			bufs_to_send_len++;
 		}
 
 		if (likely(bufs_to_send_len > 0)) {
+			RTE_LOG(INFO, USER1, "sending\n");
 			uint16_t actual_sent_len = rte_eth_tx_burst(nat_args->wan_device, 0, bufs_to_send, bufs_to_send_len);
 
 			if (unlikely(actual_sent_len < bufs_to_send_len)) {
+				RTE_LOG(INFO, USER1, "not sent\n");
 				for (uint16_t buf = actual_sent_len; buf < bufs_to_send_len; buf++) {
 					rte_pktmbuf_free(bufs_to_send[buf]);
 				}
