@@ -9,7 +9,10 @@ CC = g++
 # sources
 SRCS-y := ../nat_main.c ../nat_cmdline.c nat_forward_nat.c
 
-CFLAGS += -O3
+#CFLAGS += -O3
+CFLAGS += -g
+CFLAGS += -O0
+CFLAGS += -rdynamic
 CFLAGS += -I..
 CFLAGS += -std=c++11
 

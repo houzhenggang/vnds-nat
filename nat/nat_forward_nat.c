@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <time.h>
 
+#include <netinet/in.h>
+
 #include <map>
 #include <vector>
 
@@ -58,11 +60,13 @@ static unsigned current_timestamp;
 static struct nat_flow_id
 nat_flow_id_from_ipv4(struct ipv4_hdr* header)
 {
+	struct tcpudp_hdr* tcpudp_header = nat_get_ipv4_tcpudp_header(header);
+
 	nat_flow_id id;
 	id.src_addr = header->src_addr;
-	id.src_port = nat_get_ipv4_src_port(header);
+	id.src_port = tcpudp_header->src_port;
 	id.dst_addr = header->dst_addr;
-	id.dst_port = nat_get_ipv4_dst_port(header);
+	id.dst_port = tcpudp_header->dst_port;
 	id.protocol = header->next_proto_id;
 	return id;
 }
@@ -149,8 +153,12 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 			ether_header->d_addr = nat_args->endpoint_macs[flow->internal_device];
 
 			// L3 forwarding
-			ipv4_header->dst_addr = flow->id.dst_addr;
-			nat_set_ipv4_dst_port(ipv4_header, flow->id.dst_port);
+			struct tcpudp_hdr* tcpudp_header = nat_get_ipv4_tcpudp_header(ipv4_header);
+			ipv4_header->dst_addr = flow->id.src_addr;
+			tcpudp_header->dst_port = flow->id.src_port;
+
+			// Checksum
+			nat_set_ipv4_checksum(ipv4_header);
 
 			uint16_t actual_sent_len = rte_eth_tx_burst(flow->internal_device, 0, bufs + buf, 1);
 			if (unlikely(actual_sent_len == 0)) {
@@ -170,16 +178,17 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 			}
 
 			struct nat_flow_id flow_id = nat_flow_id_from_ipv4(ipv4_header);
+			struct tcpudp_hdr* tcpudp_header = nat_get_ipv4_tcpudp_header(ipv4_header);
 
 			struct nat_flow* flow;
 			auto flow_iter = flows_from_inside.find(flow_id);
-			if (flow_iter == flows_from_outside.end()) {
+			if (flow_iter == flows_from_inside.end()) {
 				if (available_ports.empty()) {
 					rte_pktmbuf_free(bufs[buf]);
 					continue;
 				}
 
-				int flow_port = available_ports.back();
+				uint16_t flow_port = available_ports.back();
 				available_ports.pop_back();
 
 				flow = (nat_flow*) malloc(sizeof(nat_flow));
@@ -193,7 +202,7 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 
 				struct nat_flow_id flow_from_outside;
 				flow_from_outside.src_addr = ipv4_header->dst_addr;
-				flow_from_outside.src_port = nat_get_ipv4_dst_port(ipv4_header);
+				flow_from_outside.src_port = tcpudp_header->dst_port;
 				flow_from_outside.dst_addr = nat_args->external_addr;
 				flow_from_outside.dst_port = flow_port;
 				flow_from_outside.protocol = ipv4_header->next_proto_id;
@@ -213,7 +222,10 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 
 			// L3 forwarding
 			ipv4_header->src_addr = nat_args->external_addr;
-			nat_set_ipv4_dst_port(ipv4_header, flow->external_port);
+			tcpudp_header->src_port = flow->external_port;
+
+			// Checksum
+			nat_set_ipv4_checksum(ipv4_header);
 
 			bufs_to_send[bufs_to_send_len] = bufs[buf];
 			bufs_to_send_len++;
