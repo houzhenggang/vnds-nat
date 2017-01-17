@@ -113,6 +113,14 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 	// Set this iteration's time
 	current_timestamp = time(NULL);
 
+	RTE_LOG(INFO, USER1, "CURRENT KEYS IN THE MAP ---------------------------------------\n");
+
+	for (auto group = flows_by_time.begin(); group != flows_by_time.end(); group = flows_by_time.upper_bound(group->first)) {
+		RTE_LOG(INFO, USER1, "%ld (count: %lu)\n", group->first, flows_by_time.count(group->first));
+	}
+
+	RTE_LOG(INFO, USER1, "---------------------------------------------------------END\n");
+
 	time_t xxx = 0;
 	// Expire flows if needed
 	for (auto group = flows_by_time.begin();
@@ -144,12 +152,19 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 		}
 
 		xxx = group->first;
-		flows_by_time.erase(group);
+		RTE_LOG(INFO, USER1, "erasing group %ld\n", group->first);
+		flows_by_time.erase(group->first);
+		RTE_LOG(INFO, USER1, "after erase, beginning is %ld\n", flows_by_time.begin()->first);
 	}
 	RTE_LOG(INFO, USER1, "end of expire\n");
-	if (!flows_by_time.empty()) {
-		RTE_LOG(INFO, USER1, "current beginning is %ld\n", flows_by_time.begin()->first);
+
+	RTE_LOG(INFO, USER1, "CURRENT KEYS IN THE MAP ---------------------------------------\n");
+
+	for (auto group = flows_by_time.begin(); group != flows_by_time.end(); group = flows_by_time.upper_bound(group->first)) {
+		RTE_LOG(INFO, USER1, "%ld (count: %lu)\n", group->first, flows_by_time.count(group->first));
 	}
+
+	RTE_LOG(INFO, USER1, "---------------------------------------------------------END\n");
 
 	if (device == nat_args->wan_device) {
 		for (uint16_t buf = 0; buf < bufs_len; buf++) {
