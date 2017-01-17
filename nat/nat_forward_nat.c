@@ -54,8 +54,10 @@ struct nat_flow {
 };
 
 
-#define MAP_KEY_T nat_flow_id
-#define MAP_VALUE_T nat_flow*
+#define NAT_MAP_KEY_T nat_flow_id
+#define NAT_MAP_KEY_SIZE 16
+#define NAT_MAP_VALUE_T nat_flow*
+#define NAT_MAP_VALUE_SIZE sizeof(NAT_MAP_VALUE_T)
 #include "../nat_map.h"
 
 
