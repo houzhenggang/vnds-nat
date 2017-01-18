@@ -33,29 +33,23 @@ nat_map_create(uint32_t capacity)
 void
 nat_map_insert(struct nat_map* map, NAT_MAP_KEY_T key, NAT_MAP_VALUE_T* value)
 {
-	printf("INSERT %" PRIu16 "\n", key.src_port);
 	map->value->insert(std::make_pair(key, value));
 }
 
 void
 nat_map_remove(struct nat_map* map, NAT_MAP_KEY_T key)
 {
-	printf("REMOVE %" PRIu16 "\n", key.src_port);
 	map->value->erase(key);
 }
 
 bool
 nat_map_get(struct nat_map* map, NAT_MAP_KEY_T key, NAT_MAP_VALUE_T** value)
 {
-	printf("GET %" PRIu16 ": ", key.src_port);
-
 	auto iter = map->value->find(key);
 	if (iter == map->value->end()) {
-		printf("NONE\n");
 		return false;
 	}
 
-	printf("YUP\n");
 	*value = iter->second;
 	return true;
 }

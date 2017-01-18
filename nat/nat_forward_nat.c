@@ -33,11 +33,9 @@ struct nat_flow_id {
 	uint16_t src_port;
 	uint32_t dst_addr;
 	uint16_t dst_port;
-	uint8_t protocol;
-
-	// To use DPDK maps, this type must have a power of 2 size.
-	uint16_t filler1;
-	uint8_t filler2;
+	// To use DPDK maps, this type must have a power of 2 size,
+	// so we make this 32-bit even though it only needs 8
+	uint32_t protocol;
 } __attribute__((__packed__));
 
 static uint64_t
@@ -82,6 +80,27 @@ static std::multimap<time_t, struct nat_flow*> flows_by_time;
 
 static time_t current_timestamp;
 
+
+		
+		
+static void
+log___unused(const char* label, nat_flow_id key)
+{
+        char* src_str = nat_ipv4_to_str(key.src_addr);
+        char* dst_str = nat_ipv4_to_str(key.dst_addr);
+        printf("%s %s:%" PRIu16 " -> %s:%" PRIu16 " (%" PRIu32 ")\n",
+                label, src_str, key.src_port, dst_str, key.dst_port, key.protocol);
+}
+
+static void
+logf(const char* label, nat_flow* flow)
+{
+	log(label, flow->id);
+	printf("%s flow dev:%" PRIu8 " port:%" PRIu16 " ts:%ld\n", label, flow->internal_device, 
+			flow->external_port, flow->last_packet_timestamp);
+}
+		
+		
 
 static struct nat_flow_id
 nat_flow_id_from_ipv4(struct ipv4_hdr* header)
@@ -165,6 +184,8 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 			nat_map_remove(flows_from_outside, expired_from_outside);
 			available_ports.push_back(expired->external_port);
 
+			logf("Expiring", expired);
+
 			free(expired);
 			freed.insert(expired);
 		}
@@ -184,12 +205,16 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 
 			struct nat_flow_id flow_id = nat_flow_id_from_ipv4(ipv4_header);
 
+			log("finding", flow_id);
+
 			struct nat_flow* flow;
 			if (!nat_map_get(flows_from_outside, flow_id, &flow)) {
 				RTE_LOG(INFO, USER1, "no flow\n");
 				rte_pktmbuf_free(bufs[buf]);
 				continue;
 			}
+
+			logf("found", flow);
 
 			nat_flow_refresh(flow);
 
@@ -228,6 +253,9 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 			}
 
 			struct nat_flow_id flow_id = nat_flow_id_from_ipv4(ipv4_header);
+
+			log("finding", flow_id);
+
 			struct tcpudp_hdr* tcpudp_header = nat_get_ipv4_tcpudp_header(ipv4_header);
 
 			struct nat_flow* flow;
@@ -260,11 +288,12 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 				flow_from_outside.dst_port = flow_port;
 				flow_from_outside.protocol = ipv4_header->next_proto_id;
 
-				RTE_LOG(INFO, USER1, "allocating flow\n");
+				logf("creating", flow);
 				nat_map_insert(flows_from_inside, flow_id, flow);
 				nat_map_insert(flows_from_outside, flow_from_outside, flow);
 			}
 
+			logf("found", flow);
 			nat_flow_refresh(flow);
 
 			// L2 forwarding
