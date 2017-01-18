@@ -18,7 +18,7 @@
 		rte_exit(EXIT_FAILURE, format, ##__VA_ARGS__);
 
 
-static intmax_t
+static uintmax_t
 nat_cmdline_parse_int(const char* str, const char* name, int base, char next) {
 	char* temp;
 	intmax_t result = strtoimax(str, &temp, base);
@@ -107,7 +107,7 @@ nat_cmdline_parse(struct nat_cmdline_args* nat_args, int argc, char** argv)
 				break;
 
 			case 'f':
-				nat_args->max_flows = nat_cmdline_parse_int(optarg, "max-flows", 10, '\0'); 
+				nat_args->max_flows = nat_cmdline_parse_int(optarg, "max-flows", 10, '\0');
 				if (nat_args->max_flows <= 0) {
 					PARSE_ERROR("Flow table size must be strictly positive.\n");
 				}

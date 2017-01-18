@@ -24,10 +24,7 @@ static nat_map_hash_fn map_hash_fn;
 static uint64_t
 nat_map_hash_fn_dpdk(void* key, uint32_t key_size, uint64_t seed)
 {
-//	printf("HASH sz: %" PRIu32 " val: %" PRIu64 "\n", key_size, (*map_hash_fn)(*((NAT_MAP_KEY_T*) key)));
-//	uint64_t hash = (*map_hash_fn)(*((NAT_MAP_KEY_T*) key));
-	// TODO
-	return 42;
+	return (*map_hash_fn)(*((NAT_MAP_KEY_T*) key));
 }
 
 

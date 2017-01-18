@@ -31,7 +31,7 @@ struct nat_cmdline_args {
 	uint32_t expiration_time;
 
 	// Size of the flow table
-	uint16_t max_flows;
+	uint32_t max_flows;
 };
 
 
