@@ -46,7 +46,7 @@ nat_map_create(uint32_t capacity)
 	table_params->f_hash = &nat_map_hash_fn_dpdk;
 	table_params->seed = 0; // unused
 	table_params->signature_offset = 0; // unused
-	table_params->key_offset; // MUST be 0, see remark at top of file
+	table_params->key_offset = 0; // MUST be 0, see remark at top of file
 
 	// 2nd param is socket ID, we don't really need it
 	void* dpdk_table = rte_table_hash_ext_dosig_ops.f_create(table_params, 0, sizeof(NAT_MAP_VALUE_T*));
@@ -88,6 +88,7 @@ nat_map_get(struct nat_map* map, NAT_MAP_KEY_T key, NAT_MAP_VALUE_T** value)
 		&lookup_hit_mask,
 		(void**) value
 	);
+	printf("END OF LOOKUP %" PRIu64 "\n", lookup_hit_mask);
 
 	return (lookup_hit_mask & 1) == 1;
 }
