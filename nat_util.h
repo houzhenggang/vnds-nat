@@ -36,9 +36,7 @@ static struct tcpudp_hdr*
 nat_get_ipv4_tcpudp_header(struct ipv4_hdr* header)
 {
 	uint8_t offset = header->version_ihl & IPV4_HDR_IHL_MASK;
-	printf("TCPUDP OFFSET %" PRIu8 "\n", offset);
-	printf("TCPUDP SRC %" PRIu8 " DST %" PRIu8 "\n", ((struct tcpudp_hdr*)(header + 1))->src_port, 
-				((struct tcpudp_hdr*)(header + 1))->dst_port);
+	// TODO use offset
 	return (struct tcpudp_hdr*)(header + 1);
 }
 
