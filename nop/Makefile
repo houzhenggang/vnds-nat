@@ -3,14 +3,15 @@ include $(RTE_SDK)/mk/rte.vars.mk
 # binary name
 APP = nat
 
-# all source are stored in SRCS-y
-SRCS-y := ../nat_main.c ../nat_cmdline.c nat_forward_nop.c
+# sources
+SRCS-y :=  nat_forward_nop.c ../nat_main.c ../nat_config.c
 
+# gcc flags
 CFLAGS += -O3
 CFLAGS += -I..
 CFLAGS += -std=c99
 
-# set batch size, if available
+# batch size, if available
 ifdef NAT_BATCH_SIZE
 CFLAGS += -DBATCH_SIZE=$(NAT_BATCH_SIZE)
 endif

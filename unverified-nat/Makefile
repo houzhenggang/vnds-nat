@@ -7,8 +7,10 @@ APP = nat
 CC = g++
 
 # sources
-SRCS-y := nat_forward_nat.c ../nat_main.c ../nat_cmdline.c
+SRCS-y := nat_forward_nat.c nat_map_dpdk.c ../nat_main.c ../nat_config.c
 
+# g++ flags
+#CFLAGS += -O0 -g -rdynamic -DENABLE_LOG
 CFLAGS += -O3
 CFLAGS += -I..
 CFLAGS += -std=c++11

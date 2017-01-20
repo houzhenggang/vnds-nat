@@ -3,8 +3,8 @@
 #include <rte_table.h>
 #include <rte_table_hash.h>
 
+#include "nat_flow.h"
 #include "nat_map.h"
-
 
 // Map using DPDK table.
 // Keys must be structs whose size is a power of 2.
@@ -24,7 +24,7 @@ static nat_map_hash_fn map_hash_fn;
 static uint64_t
 nat_map_hash_fn_dpdk(void* key, uint32_t key_size, uint64_t seed)
 {
-	return (*map_hash_fn)(*((NAT_MAP_KEY_T*) key));
+	return (*map_hash_fn)(*((nat_flow_id*) key));
 }
 
 
@@ -40,7 +40,7 @@ struct nat_map*
 nat_map_create(uint32_t capacity)
 {
 	rte_table_hash_ext_params table_params;
-	table_params.key_size = sizeof(NAT_MAP_KEY_T);
+	table_params.key_size = sizeof(nat_flow_id);
 	table_params.n_keys = capacity;
 	table_params.n_buckets = capacity >> 2;
 	table_params.n_buckets_ext = capacity >> 2;
@@ -50,7 +50,7 @@ nat_map_create(uint32_t capacity)
 	table_params.key_offset = 0; // MUST be 0, see remark at top of file
 
 	// 2nd param is socket ID, we don't really need it
-	void* dpdk_table = rte_table_hash_ext_dosig_ops.f_create(&table_params, 0, sizeof(NAT_MAP_VALUE_T*));
+	void* dpdk_table = rte_table_hash_ext_dosig_ops.f_create(&table_params, 0, sizeof(nat_flow*));
 	if (dpdk_table == NULL) {
 		rte_exit(EXIT_FAILURE, "Out of memory in nat_map_create for rte_table\n");
 	}
@@ -65,7 +65,7 @@ nat_map_create(uint32_t capacity)
 }
 
 void
-nat_map_insert(struct nat_map* map, NAT_MAP_KEY_T key, NAT_MAP_VALUE_T* value)
+nat_map_insert(struct nat_map* map, nat_flow_id key, nat_flow* value)
 {
 	// The add function allows to both check if the value was already there, and get a handle to the entry.
 	// We care about neither.
@@ -79,7 +79,7 @@ nat_map_insert(struct nat_map* map, NAT_MAP_KEY_T key, NAT_MAP_VALUE_T* value)
 }
 
 void
-nat_map_remove(struct nat_map* map, NAT_MAP_KEY_T key)
+nat_map_remove(struct nat_map* map, nat_flow_id key)
 {
 	// Same remark as insert
 	int unused_key_found;
@@ -92,7 +92,7 @@ nat_map_remove(struct nat_map* map, NAT_MAP_KEY_T key)
 }
 
 bool
-nat_map_get(struct nat_map* map, NAT_MAP_KEY_T key, NAT_MAP_VALUE_T** value)
+nat_map_get(struct nat_map* map, nat_flow_id key, nat_flow** value)
 {
 	uint64_t lookup_hit_mask;
 	void* keys = &key;
@@ -114,6 +114,6 @@ nat_map_get(struct nat_map* map, NAT_MAP_KEY_T key, NAT_MAP_VALUE_T** value)
 		return false;
 	}
 
-	*value = *((NAT_MAP_VALUE_T**) values[0]);
+	*value = *((nat_flow**) values[0]);
 	return true;
 }

@@ -9,17 +9,12 @@
 #include <rte_ethdev.h>
 #include <rte_launch.h>
 #include <rte_lcore.h>
-#include <rte_log.h>
 #include <rte_mbuf.h>
 
-#include "nat_cmdline.h"
+#include "nat_config.h"
 #include "nat_forward.h"
+#include "nat_log.h"
 #include "nat_util.h"
-
-
-// --- Logging ---
-
-#define RTE_LOGTYPE_NAT RTE_LOGTYPE_USER1
 
 
 // --- Static config ---
@@ -39,44 +34,39 @@ static const unsigned MEMPOOL_BUFFER_COUNT = 8192;
 static const unsigned MEMPOOL_CACHE_SIZE = 256;
 
 
-// --- Dynamic config ---
-
-static struct nat_cmdline_args nat_args;
-
-
 // --- Initialization ---
 
 static void
-nat_print_config(void)
+nat_print_config(struct nat_config* config)
 {
-	printf("\n--- NAT Config ---\n\n");
+	NAT_INFO("\n--- NAT Config ---\n");
 
-	printf("Batch size: %" PRIu16 "\n", BATCH_SIZE);
+	NAT_INFO("Batch size: %" PRIu16, BATCH_SIZE);
 
-	printf("Devices mask: 0x%" PRIx32 "\n", nat_args.devices_mask);
-	printf("Main LAN device: %" PRIu8 "\n", nat_args.lan_main_device);
-	printf("WAN device: %" PRIu8 "\n", nat_args.wan_device);
+	NAT_INFO("Devices mask: 0x%" PRIx32, config->devices_mask);
+	NAT_INFO("Main LAN device: %" PRIu8, config->lan_main_device);
+	NAT_INFO("WAN device: %" PRIu8, config->wan_device);
 
-	char* ext_ip_str = nat_ipv4_to_str(nat_args.external_addr);
-	printf("External IP: %s\n", ext_ip_str);
+	char* ext_ip_str = nat_ipv4_to_str(config->external_addr);
+	NAT_INFO("External IP: %s", ext_ip_str);
 	free(ext_ip_str);
 
 	uint8_t nb_devices = rte_eth_dev_count();
 	for (uint8_t dev = 0; dev < nb_devices; dev++) {
-		char* dev_mac_str = nat_mac_to_str(&(nat_args.device_macs[dev]));
-		char* end_mac_str = nat_mac_to_str(&(nat_args.endpoint_macs[dev]));
+		char* dev_mac_str = nat_mac_to_str(&(config->device_macs[dev]));
+		char* end_mac_str = nat_mac_to_str(&(config->endpoint_macs[dev]));
 
-		printf("Device %" PRIu8 " own-mac: %s, end-mac: %s\n", dev, dev_mac_str, end_mac_str);
+		NAT_INFO("Device %" PRIu8 " own-mac: %s, end-mac: %s", dev, dev_mac_str, end_mac_str);
 
 		free(dev_mac_str);
 		free(end_mac_str);
 	}
 
-	printf("Starting port: %" PRIu16 "\n", nat_args.start_port);
-	printf("Expiration time: %" PRIu32 "\n", nat_args.expiration_time);
-	printf("Max flows: %" PRIu16 "\n", nat_args.max_flows);
+	NAT_INFO("Starting port: %" PRIu16, config->start_port);
+	NAT_INFO("Expiration time: %" PRIu32, config->expiration_time);
+	NAT_INFO("Max flows: %" PRIu16, config->max_flows);
 
-	printf("\n---\n\n");
+	NAT_INFO("\n--- --- ------ ---\n");
 }
 
 static int
@@ -153,25 +143,25 @@ nat_init_device(uint8_t device, struct rte_mempool *mbuf_pool)
 // --- Per-core work ---
 
 static __attribute__((noreturn)) void
-lcore_main(void)
+lcore_main(struct nat_config* config)
 {
 	uint8_t nb_devices = rte_eth_dev_count();
 	unsigned core_id = rte_lcore_id();
 
 	for (uint8_t device = 0; device < nb_devices; device++) {
 		if (rte_eth_dev_socket_id(device) > 0 && rte_eth_dev_socket_id(device) != (int) rte_socket_id()) {
-			RTE_LOG(WARNING, NAT, "Device %" PRIu8 " is on remote NUMA node to polling thread.\n", device);
+			NAT_INFO("Device %" PRIu8 " is on remote NUMA node to polling thread.", device);
 		}
 	}
 
-	nat_core_init(&nat_args, core_id);
+	nat_core_init(config, core_id);
 
-	RTE_LOG(INFO, NAT, "Core %u forwarding packets.\n", core_id);
+	NAT_INFO("Core %u forwarding packets.", core_id);
 
 	// Run until the application is killed
-	while(1) {
+	while (1) {
 		for (uint8_t device = 0; device < nb_devices; device++) {
-			if ((nat_args.devices_mask & (1 << device)) == 0) {
+			if ((config->devices_mask & (1 << device)) == 0) {
 				continue;
 			}
 
@@ -179,7 +169,7 @@ lcore_main(void)
 			uint16_t bufs_len = rte_eth_rx_burst(device, 0, bufs, BATCH_SIZE);
 
 			if (likely(bufs_len != 0)) {
-				nat_core_process(&nat_args, core_id, device, bufs, bufs_len);
+				nat_core_process(config, core_id, device, bufs, bufs_len);
 			}
 		}
 	}
@@ -199,9 +189,9 @@ main(int argc, char *argv[])
 	argc -= ret;
 	argv += ret;
 
-	nat_cmdline_parse(&nat_args, argc, argv);
-
-	nat_print_config();
+	struct nat_config config;
+	nat_config_init(&config, argc, argv);
+	nat_print_config(&config);
 
 	// Create a memory pool
 	unsigned nb_devices = rte_eth_dev_count();
@@ -219,18 +209,18 @@ main(int argc, char *argv[])
 
 	// Initialize all devices
 	for (uint8_t device = 0; device < nb_devices; device++) {
-		if ((nat_args.devices_mask & (1 << device)) == 0) {
-			RTE_LOG(INFO, NAT, "Skipping disabled device %" PRIu8 "\n", device);
+		if ((config.devices_mask & (1 << device)) == 0) {
+			NAT_INFO("Skipping disabled device %" PRIu8 ".", device);
 		} else if (nat_init_device(device, mbuf_pool) == 0) {
-			RTE_LOG(INFO, NAT, "Initialized device %" PRIu8 "\n", device);
+			NAT_INFO("Initialized device %" PRIu8 ".", device);
 		} else {
-			rte_exit(EXIT_FAILURE, "Cannot init device %" PRIu8 "\n", device);
+			rte_exit(EXIT_FAILURE, "Cannot init device %" PRIu8 ".", device);
 		}
 	}
 
 	// Run!
 	// ...in single-threaded mode, that is.
-	lcore_main();
+	lcore_main(&config);
 
 	return 0;
 }

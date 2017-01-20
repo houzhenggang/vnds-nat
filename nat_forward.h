@@ -4,11 +4,11 @@
 
 #include <rte_mbuf.h>
 
-#include "nat_cmdline.h"
+#include "nat_config.h"
 
 
 void
-nat_core_init(struct nat_cmdline_args* nat_args, unsigned core_id);
+nat_core_init(struct nat_config* config, unsigned core_id);
 
 void
-nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t device, struct rte_mbuf** bufs, uint16_t bufs_len);
+nat_core_process(struct nat_config* config, unsigned core_id, uint8_t device, struct rte_mbuf** bufs, uint16_t bufs_len);

@@ -8,20 +8,20 @@
 #include <rte_ethdev.h>
 #include <rte_mbuf.h>
 
-#include "../nat_cmdline.h"
+#include "../nat_config.h"
 #include "../nat_forward.h"
 #include "../nat_util.h"
 
 void
-nat_core_init(struct nat_cmdline_args* nat_args, unsigned core_id)
+nat_core_init(struct nat_config* config, unsigned core_id)
 {
 	// Nothing; just mark the parameters as unused.
-	(void) nat_args;
+	(void) config;
 	(void) core_id;
 }
 
 void
-nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t device, struct rte_mbuf** bufs, uint16_t bufs_len)
+nat_core_process(struct nat_config* config, unsigned core_id, uint8_t device, struct rte_mbuf** bufs, uint16_t bufs_len)
 {
 	// Mark core_id as unused, since this is a single-threaded program
 	(void) core_id;
@@ -31,17 +31,17 @@ nat_core_process(struct nat_cmdline_args* nat_args, unsigned core_id, uint8_t de
 	// and all packets from WAN to the main LAN port, and let the recipient ignore the useless ones.
 
 	uint8_t dst_device;
-	if(device == nat_args->wan_device) {
-		dst_device = nat_args->lan_main_device;
+	if(device == config->wan_device) {
+		dst_device = config->lan_main_device;
 	} else {
-		dst_device = nat_args->wan_device;
+		dst_device = config->wan_device;
 	}
 
 	// L2 forwarding
 	for (uint16_t buf = 0; buf < bufs_len; buf++) {
 		struct ether_hdr* ether_header = nat_get_mbuf_ether_header(bufs[buf]);
-		ether_header->s_addr = nat_args->device_macs[dst_device];
-		ether_header->d_addr = nat_args->endpoint_macs[dst_device];
+		ether_header->s_addr = config->device_macs[dst_device];
+		ether_header->d_addr = config->endpoint_macs[dst_device];
 	}
 
 	uint16_t sent_count = rte_eth_tx_burst(dst_device, 0, bufs, bufs_len);

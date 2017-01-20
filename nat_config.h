@@ -4,7 +4,8 @@
 
 #include <rte_ether.h>
 
-struct nat_cmdline_args {
+
+struct nat_config {
 	// Device mask, to enable/disable devices if needed
 	uint32_t devices_mask;
 
@@ -36,7 +37,7 @@ struct nat_cmdline_args {
 
 
 void
-nat_cmdline_parse(struct nat_cmdline_args* nat_args, int argc, char** argv);
+nat_config_init(struct nat_config* config, int argc, char** argv);
 
 void
-nat_cmdline_print_usage(void);
+nat_config_cmdline_print_usage(void);
