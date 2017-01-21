@@ -99,7 +99,8 @@ struct nested_field_descr user_buf_nested[] = {
 
 // " <-- work around a bug in nano with string syntax coloring caused by the macro above
 
-static void received_packet(uint8_t device, struct rte_mbuf *mbuf)
+static void
+received_packet(uint8_t device, struct rte_mbuf* mbuf)
 {
 	klee_trace_ret();
 	klee_trace_param_i32(device, "received_packet_device");
@@ -139,7 +140,7 @@ lcore_main(struct nat_config* config)
 
 
 int
-main(int argc, char *argv[])
+main(int argc, char* argv[])
 {
 	// Initialize the Environment Abstraction Layer (EAL)
 	int ret = rte_eal_init(argc, argv);

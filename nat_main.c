@@ -198,7 +198,7 @@ lcore_main(struct nat_config* config)
 // --- Main ---
 
 int
-main(int argc, char *argv[])
+main(int argc, char* argv[])
 {
 	// Initialize the Environment Abstraction Layer (EAL)
 	int ret = rte_eal_init(argc, argv);
