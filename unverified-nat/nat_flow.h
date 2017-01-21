@@ -1,6 +1,7 @@
 #pragma once
 
-#include <time.h>
+#include <inttypes.h>
+#include <string.h>
 
 
 struct nat_flow_id {
@@ -36,5 +37,5 @@ struct nat_flow {
 	struct nat_flow_id id;
 	uint8_t internal_device;
 	uint16_t external_port;
-	time_t last_packet_timestamp;
+	uint32_t last_packet_timestamp;
 };

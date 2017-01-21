@@ -6,9 +6,6 @@
 #include <stdlib.h>
 #include <time.h>
 
-// TODO why is this included? I don't remember...
-#include <netinet/in.h>
-
 #include <queue>
 #include <vector>
 
@@ -45,7 +42,7 @@ static std::priority_queue<struct nat_flow*,
 				std::vector<struct nat_flow*>,
 				decltype(&nat_flow_greater_timestamp)> flows_by_time(nat_flow_greater_timestamp);
 
-static time_t current_timestamp;
+static uint32_t current_timestamp;
 
 
 static struct nat_flow_id
@@ -100,8 +97,6 @@ nat_core_process(struct nat_config* config, uint8_t device, struct rte_mbuf* mbu
 
 	// Expire flows if needed
 	if (now > current_timestamp && !flows_by_time.empty()) {
-		current_timestamp = now;
-
 		nat_flows_by_time_refresh();
 
 		nat_flow* expired_flow = flows_by_time.top();
@@ -125,6 +120,9 @@ nat_core_process(struct nat_config* config, uint8_t device, struct rte_mbuf* mbu
 			expired_flow = flows_by_time.top();
 		}
 	}
+
+	current_timestamp = now;
+
 
 	// Redirect packets
 	if (device == config->wan_device) {
@@ -212,7 +210,7 @@ nat_core_process(struct nat_config* config, uint8_t device, struct rte_mbuf* mbu
 			flow_from_outside.dst_port = flow_port;
 			flow_from_outside.protocol = ipv4_header->next_proto_id;
 
-			NAT_DEBUG("Creating flow");
+			NAT_DEBUG("Creating flow, port=%" PRIu16, flow_port);
 
 			nat_map_insert(flows_from_inside, flow_id, flow);
 			nat_map_insert(flows_from_outside, flow_from_outside, flow);

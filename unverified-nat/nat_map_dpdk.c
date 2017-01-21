@@ -24,7 +24,8 @@ static nat_map_hash_fn map_hash_fn;
 static uint64_t
 nat_map_hash_fn_dpdk(void* key, uint32_t key_size, uint64_t seed)
 {
-	return (*map_hash_fn)(*((nat_flow_id*) key));
+	// DPDK bug: if any bit above the 32nd is set in the hash, lookup always fails.
+	return (uint32_t) (*map_hash_fn)(*((nat_flow_id*) key));
 }
 
 
