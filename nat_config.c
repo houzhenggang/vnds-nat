@@ -1,14 +1,21 @@
 #include <getopt.h>
 #include <inttypes.h>
 
-// DPDK needs these but doesn't include them. :|
-#include <linux/limits.h>
-#include <sys/types.h>
+#if KLEE_VERIFICATION
+	// TODO bad, shouldn't point from here to vignat dir :(
+	//      ideally, remove this #if and use forward decls or something... or just stub the entire config?
+	#include "vignat/lib/stubs/rte_stubs.h"
+#else
+	// DPDK needs these but doesn't include them. :|
+	#include <linux/limits.h>
+	#include <sys/types.h>
+
+	#include <rte_common.h>
+	#include <rte_ethdev.h>
+#endif
 
 #include <cmdline_parse_etheraddr.h>
 #include <cmdline_parse_ipaddr.h>
-#include <rte_common.h>
-#include <rte_ethdev.h>
 
 #include "nat_config.h"
 
@@ -53,7 +60,7 @@ nat_config_init(struct nat_config* config, int argc, char** argv)
 
 	// Set the devices' own MACs
 	for (uint8_t device = 0; device < nb_devices; device++) {
-		rte_eth_macaddr_get(device, &config->device_macs[device]);
+		rte_eth_macaddr_get(device, &(config->device_macs[device]));
 	}
 
 	int opt;

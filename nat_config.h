@@ -2,7 +2,10 @@
 
 #include <inttypes.h>
 
-#include <rte_ether.h>
+// TODO can't really include rte_max_ethports here but need it :/
+
+// rte_ether
+struct ether_addr;
 
 
 struct nat_config {

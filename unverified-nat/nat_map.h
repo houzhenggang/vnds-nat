@@ -4,6 +4,7 @@
 
 #include "nat_flow.h"
 
+
 struct nat_map;
 
 typedef uint64_t (*nat_map_hash_fn)(nat_flow_id key);

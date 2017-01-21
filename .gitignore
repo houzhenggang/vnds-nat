@@ -1,3 +1,9 @@
+# Verification artifacts
+klee-*/
+klee-last
+*.bc
+
+# Build artifacts
 build/
 *.o
 *.d

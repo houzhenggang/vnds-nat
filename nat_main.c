@@ -14,16 +14,17 @@
 #include "nat_config.h"
 #include "nat_forward.h"
 #include "nat_log.h"
+#include "nat_time.h"
 #include "nat_util.h"
 
 
 // --- Static config ---
-
+// TODO see remark in lcore_main
 // Size of batches to receive; trade-off between latency and throughput
 // Can be overriden at compile time
-#ifndef BATCH_SIZE
-static const uint16_t BATCH_SIZE = 32;
-#endif
+//#ifndef BATCH_SIZE
+//static const uint16_t BATCH_SIZE = 32;
+//#endif
 
 // Queue sizes for receiving/transmitting packets (set to their values from l3fwd sample)
 static const uint16_t RX_QUEUE_SIZE = 128;
@@ -41,7 +42,8 @@ nat_print_config(struct nat_config* config)
 {
 	NAT_INFO("\n--- NAT Config ---\n");
 
-	NAT_INFO("Batch size: %" PRIu16, BATCH_SIZE);
+// TODO see remark in lcore_main
+//	NAT_INFO("Batch size: %" PRIu16, BATCH_SIZE);
 
 	NAT_INFO("Devices mask: 0x%" PRIx32, config->devices_mask);
 	NAT_INFO("Main LAN device: %" PRIu8, config->lan_main_device);
@@ -146,7 +148,6 @@ static __attribute__((noreturn)) void
 lcore_main(struct nat_config* config)
 {
 	uint8_t nb_devices = rte_eth_dev_count();
-	unsigned core_id = rte_lcore_id();
 
 	for (uint8_t device = 0; device < nb_devices; device++) {
 		if (rte_eth_dev_socket_id(device) > 0 && rte_eth_dev_socket_id(device) != (int) rte_socket_id()) {
@@ -154,9 +155,9 @@ lcore_main(struct nat_config* config)
 		}
 	}
 
-	nat_core_init(config, core_id);
+	nat_core_init(config);
 
-	NAT_INFO("Core %u forwarding packets.", core_id);
+	NAT_INFO("Core %u forwarding packets.", rte_lcore_id());
 
 	// Run until the application is killed
 	while (1) {
@@ -165,12 +166,30 @@ lcore_main(struct nat_config* config)
 				continue;
 			}
 
-			struct rte_mbuf* bufs[BATCH_SIZE];
-			uint16_t bufs_len = rte_eth_rx_burst(device, 0, bufs, BATCH_SIZE);
+			struct rte_mbuf* buf[1];
+			uint16_t actual_rx_len = rte_eth_rx_burst(device, 0, buf, 1);
 
-			if (likely(bufs_len != 0)) {
-				nat_core_process(config, core_id, device, bufs, bufs_len);
+			if (actual_rx_len != 0) {
+				uint32_t now = current_time();
+				uint8_t dst_device = nat_core_process(config, device, buf[0], now);
+
+				if (dst_device == device) {
+					rte_pktmbuf_free(buf[0]);
+				} else {
+					uint16_t actual_tx_len = rte_eth_tx_burst(dst_device, 0, buf, 1);
+
+					if (actual_tx_len == 0) {
+						rte_pktmbuf_free(buf[0]);
+					}
+				}
 			}
+// TODO benchmark, consider batching
+//			struct rte_mbuf* bufs[BATCH_SIZE];
+//			uint16_t bufs_len = rte_eth_rx_burst(device, 0, bufs, BATCH_SIZE);
+
+//			if (likely(bufs_len != 0)) {
+//				nat_core_process(config, core_id, device, bufs, bufs_len);
+//			}
 		}
 	}
 }

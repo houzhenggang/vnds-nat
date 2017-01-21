@@ -4,7 +4,7 @@ include $(RTE_SDK)/mk/rte.vars.mk
 APP = nat
 
 # sources
-SRCS-y :=  nat_forward_nop.c ../nat_main.c ../nat_config.c
+SRCS-y := nat_forward_nop.c ../nat_main.c ../nat_config.c
 
 # gcc flags
 CFLAGS += -O3

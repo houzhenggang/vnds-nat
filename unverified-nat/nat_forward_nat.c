@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <time.h>
 
+// TODO why is this included? I don't remember...
 #include <netinet/in.h>
 
 #include <queue>
@@ -135,7 +136,14 @@ nat_core_process(struct nat_config* config, unsigned core_id, uint8_t device, st
 
 		for (uint16_t buf = 0; buf < bufs_len; buf++) {
 			struct ipv4_hdr* ipv4_header = nat_get_mbuf_ipv4_header(bufs[buf]);
-			if(ipv4_header->next_proto_id != IPPROTO_TCP && ipv4_header->next_proto_id != IPPROTO_UDP) {
+			if (ipv4_header == NULL) {
+				NAT_DEBUG("Not IPv4, dropping");
+				rte_pktmbuf_free(bufs[buf]);
+				continue;
+			}
+
+			struct tcpudp_hdr* tcpudp_header = nat_get_ipv4_tcpudp_header(ipv4_header);
+			if (tcpudp_header == NULL) {
 				NAT_DEBUG("Not TCP/UDP, dropping");
 				rte_pktmbuf_free(bufs[buf]);
 				continue;
@@ -160,7 +168,6 @@ nat_core_process(struct nat_config* config, unsigned core_id, uint8_t device, st
 			ether_header->d_addr = config->endpoint_macs[flow->internal_device];
 
 			// L3 forwarding
-			struct tcpudp_hdr* tcpudp_header = nat_get_ipv4_tcpudp_header(ipv4_header);
 			ipv4_header->dst_addr = flow->id.src_addr;
 			tcpudp_header->dst_port = flow->id.src_port;
 
@@ -184,13 +191,19 @@ nat_core_process(struct nat_config* config, unsigned core_id, uint8_t device, st
 
 		for (uint16_t buf = 0; buf < bufs_len; buf++) {
 			struct ipv4_hdr* ipv4_header = nat_get_mbuf_ipv4_header(bufs[buf]);
-			if(ipv4_header->next_proto_id != IPPROTO_TCP && ipv4_header->next_proto_id != IPPROTO_UDP) {
-				NAT_DEBUG("Not TCP/UDP, dropping");
+			if (ipv4_header == NULL) {
+				NAT_DEBUG("Not IPv4, dropping");
 				rte_pktmbuf_free(bufs[buf]);
 				continue;
 			}
 
 			struct tcpudp_hdr* tcpudp_header = nat_get_ipv4_tcpudp_header(ipv4_header);
+			if (tcpudp_header == NULL) {
+				NAT_DEBUG("Not TCP/UDP, dropping");
+				rte_pktmbuf_free(bufs[buf]);
+				continue;
+			}
+
 			struct nat_flow_id flow_id = nat_flow_id_from_ipv4(ipv4_header);
 			NAT_DEBUG("Flow: %" PRIu16 " -> %" PRIu16, flow_id.src_port, flow_id.dst_port);
 
